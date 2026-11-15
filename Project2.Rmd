@@ -1,0 +1,383 @@
+---
+title: "CS108 Statistics – Project 2"
+author: "Elina Davtyan, Nana Budaghyan, Lusine Norekyan"
+output: html_document
+---
+
+# 6. Confidence Intervals by Elina
+
+This section constructs and evaluates 95% confidence intervals for the population mean of `radius_mean` among observations classified as malignant (`M`) in the Wisconsin Diagnostic Breast Cancer dataset.
+
+The variable `radius_mean` is positive and continuous. We use the Gamma model with shape parameter \(\alpha\) and rate parameter \(\lambda\). The parameter of interest is the population mean
+
+\[
+\mu = \frac{\alpha}{\lambda}.
+\]
+
+For a Gamma distribution parameterized by shape and rate,
+
+\[
+E(X)=\frac{\alpha}{\lambda},
+\qquad
+\operatorname{Var}(X)=\frac{\alpha}{\lambda^2}.
+\]
+
+The confidence intervals below are asymptotic intervals for \(\mu\). The Gamma parameter estimates are calculated only because they are needed to construct and simulate the confidence intervals.
+
+## 6.1 Construction of confidence intervals
+
+### Prepare the sample and estimate the Gamma parameters
+
+Place `wdbc_project.csv` in the same folder as this R Markdown file before knitting.
+
+```{r setup}
+set.seed(108)
+
+wdbc <- read.csv("wdbc_project.csv")
+
+# Keep malignant observations and select radius_mean
+malignant <- wdbc[wdbc$diagnosis == "M", ]
+x <- malignant$radius_mean
+
+# Keep positive, non-missing observations
+x <- x[!is.na(x) & x > 0]
+
+n <- length(x)
+sample_mean <- mean(x)
+
+cat("Number of malignant observations:", n, "\n")
+cat("Sample mean:", sample_mean, "\n")
+```
+
+For a Gamma distribution with shape \(\alpha\) and rate \(\lambda\), the maximum likelihood estimates satisfy
+
+\[
+\widehat{\lambda}=\frac{\widehat{\alpha}}{\bar X},
+\]
+
+where \(\widehat{\alpha}\) is obtained by solving
+
+\[
+\log(\alpha)-\psi(\alpha)
+=
+\log(\bar X)-\frac{1}{n}\sum_{i=1}^{n}\log(X_i).
+\]
+
+Here, \(\psi\) is the digamma function. We solve this equation numerically using `uniroot()`.
+
+```{r gamma-estimates}
+gamma_mle <- function(values) {
+  values <- values[!is.na(values) & values > 0]
+
+  x_bar <- mean(values)
+  s <- log(x_bar) - mean(log(values))
+
+  equation <- function(shape) {
+    log(shape) - digamma(shape) - s
+  }
+
+  shape_hat <- uniroot(
+    equation,
+    interval = c(0.000001, 1000000)
+  )$root
+
+  rate_hat <- shape_hat / x_bar
+
+  c(
+    shape = shape_hat,
+    rate = rate_hat,
+    mean = shape_hat / rate_hat
+  )
+}
+
+estimates <- gamma_mle(x)
+
+alpha_hat <- unname(estimates["shape"])
+lambda_hat <- unname(estimates["rate"])
+mu_hat <- unname(estimates["mean"])
+
+data.frame(
+  Parameter = c("Shape (alpha)", "Rate (lambda)", "Mean (mu)"),
+  Estimate = c(alpha_hat, lambda_hat, mu_hat)
+)
+```
+
+For the Gamma MLE, the estimated mean is equal to the sample mean. Using the asymptotic distribution of the MLE and the Fisher information, the estimated standard error of the mean estimator is
+
+\[
+SE(\widehat{\mu})
+\approx
+\frac{\widehat{\mu}}{\sqrt{n\widehat{\alpha}}}.
+\]
+
+### Method 1: Normal (Wald) confidence interval
+
+The Wald interval uses the asymptotic normal approximation:
+
+\[
+\widehat{\mu}
+\pm
+z_{0.975}SE(\widehat{\mu}).
+\]
+
+For a 95% confidence interval, \(z_{0.975}\) is approximately 1.96.
+
+### Method 2: Log-transformed confidence interval
+
+Since the population mean is positive, we can construct an interval on the logarithmic scale and then transform its endpoints back to the original scale:
+
+\[
+\left[
+\exp\left(\log(\widehat{\mu})-
+\frac{z_{0.975}}{\sqrt{n\widehat{\alpha}}}\right),
+\;
+\exp\left(\log(\widehat{\mu})+
+\frac{z_{0.975}}{\sqrt{n\widehat{\alpha}}}\right)
+\right].
+\]
+
+This interval is always positive and is generally asymmetric around the estimated mean.
+
+### Calculate and compare the confidence intervals
+
+```{r confidence-intervals}
+confidence_level <- 0.95
+alpha_level <- 1 - confidence_level
+z_value <- qnorm(1 - alpha_level / 2)
+
+se_mu <- mu_hat / sqrt(n * alpha_hat)
+
+# Method 1: Wald normal confidence interval
+wald_lower <- mu_hat - z_value * se_mu
+wald_upper <- mu_hat + z_value * se_mu
+
+# Method 2: Log-transformed confidence interval
+log_se <- 1 / sqrt(n * alpha_hat)
+log_lower <- exp(log(mu_hat) - z_value * log_se)
+log_upper <- exp(log(mu_hat) + z_value * log_se)
+
+ci_results <- data.frame(
+  Method = c("Wald normal", "Log-transformed"),
+  Lower = c(wald_lower, log_lower),
+  Upper = c(wald_upper, log_upper),
+  Length = c(
+    wald_upper - wald_lower,
+    log_upper - log_lower
+  )
+)
+
+knitr::kable(
+  ci_results,
+  digits = 4,
+  caption = "95% confidence intervals for the population mean"
+)
+```
+
+The table reports the lower and upper endpoints and the length of each interval. The interval length measures its width: a shorter interval is more precise when its coverage is close to the nominal confidence level.
+
+The confidence level describes the long-run performance of the interval procedure. If we repeatedly took samples and constructed intervals in the same way, approximately 95% of those intervals would contain the true population mean, assuming the model and approximation are appropriate. It is not correct to say that the fixed population mean has a 95% probability of belonging to this particular calculated interval.
+
+## 6.2 Simulation study of the coverage probability
+
+We use a simulation study to examine whether the two confidence interval methods achieve coverage close to the nominal 95% level.
+
+We take the Gamma parameter estimates from the malignant observations as fixed true parameter values for the simulation. For each simulated sample, we re-estimate the Gamma parameters and construct both confidence intervals. We record whether each interval contains the fixed true mean and calculate its length.
+
+We use 5,000 repetitions for each sample size. The sample sizes include a smaller sample, the actual malignant sample size, and a larger sample.
+
+```{r simulation-setup}
+B <- 5000
+
+# Treat the estimates from the real data as fixed true parameters
+true_shape <- alpha_hat
+true_rate <- lambda_hat
+true_mean <- true_shape / true_rate
+
+sample_sizes <- sort(unique(c(30, n, 500)))
+
+cat("Fixed true shape:", true_shape, "\n")
+cat("Fixed true rate:", true_rate, "\n")
+cat("Fixed true mean:", true_mean, "\n")
+cat("Simulation repetitions:", B, "\n")
+cat("Sample sizes:", sample_sizes, "\n")
+```
+
+### Run the coverage simulation
+
+```{r coverage-simulation}
+simulation_results <- data.frame(
+  SampleSize = integer(),
+  Method = character(),
+  Coverage = numeric(),
+  AverageLength = numeric()
+)
+
+for (sample_size in sample_sizes) {
+
+  wald_covered <- logical(B)
+  log_covered <- logical(B)
+
+  wald_lengths <- numeric(B)
+  log_lengths <- numeric(B)
+
+  for (i in seq_len(B)) {
+
+    # Generate a sample from the fixed Gamma model
+    simulated_sample <- rgamma(
+      sample_size,
+      shape = true_shape,
+      rate = true_rate
+    )
+
+    # Estimate the Gamma parameters from the simulated sample
+    simulated_estimates <- gamma_mle(simulated_sample)
+
+    simulated_shape <- unname(simulated_estimates["shape"])
+    simulated_mean <- unname(simulated_estimates["mean"])
+
+    # Estimated standard error for the sample mean
+    simulated_se <- simulated_mean /
+      sqrt(sample_size * simulated_shape)
+
+    # Method 1: Wald interval
+    wald_low <- simulated_mean - z_value * simulated_se
+    wald_up <- simulated_mean + z_value * simulated_se
+
+    # Method 2: Log-transformed interval
+    simulated_log_se <- 1 /
+      sqrt(sample_size * simulated_shape)
+
+    log_low <- exp(
+      log(simulated_mean) - z_value * simulated_log_se
+    )
+    log_up <- exp(
+      log(simulated_mean) + z_value * simulated_log_se
+    )
+
+    # Record whether each interval contains the fixed true mean
+    wald_covered[i] <- (
+      wald_low <= true_mean && true_mean <= wald_up
+    )
+
+    log_covered[i] <- (
+      log_low <= true_mean && true_mean <= log_up
+    )
+
+    # Record interval lengths
+    wald_lengths[i] <- wald_up - wald_low
+    log_lengths[i] <- log_up - log_low
+  }
+
+  simulation_results <- rbind(
+    simulation_results,
+    data.frame(
+      SampleSize = sample_size,
+      Method = "Wald normal",
+      Coverage = mean(wald_covered),
+      AverageLength = mean(wald_lengths)
+    ),
+    data.frame(
+      SampleSize = sample_size,
+      Method = "Log-transformed",
+      Coverage = mean(log_covered),
+      AverageLength = mean(log_lengths)
+    )
+  )
+}
+
+knitr::kable(
+  simulation_results,
+  digits = 4,
+  caption = "Empirical coverage and average interval length from 5,000 simulations"
+)
+```
+
+The empirical coverage probability is calculated as
+
+\[
+\widehat{p}
+=
+\frac{\text{Number of simulated intervals containing the true mean}}{B}.
+\]
+
+The average interval length is the mean of the lengths of the 5,000 intervals for each method and sample size.
+
+### Compare empirical coverage with the nominal 95% level
+
+```{r coverage-plot}
+plot(
+  simulation_results$SampleSize[
+    simulation_results$Method == "Wald normal"
+  ],
+  simulation_results$Coverage[
+    simulation_results$Method == "Wald normal"
+  ],
+  type = "b",
+  pch = 16,
+  ylim = range(c(0, 1, simulation_results$Coverage)),
+  xlab = "Sample size",
+  ylab = "Empirical coverage probability",
+  main = "Coverage probability of the two confidence interval methods"
+)
+
+lines(
+  simulation_results$SampleSize[
+    simulation_results$Method == "Log-transformed"
+  ],
+  simulation_results$Coverage[
+    simulation_results$Method == "Log-transformed"
+  ],
+  type = "b",
+  pch = 17
+)
+
+abline(h = 0.95, lty = 2)
+
+legend(
+  "bottomright",
+  legend = c("Wald normal", "Log-transformed", "Target: 95%"),
+  lty = c(1, 1, 2),
+  pch = c(16, 17, NA)
+)
+```
+
+The horizontal dashed line represents the target coverage probability of 0.95. Values closer to this line indicate empirical coverage closer to the nominal 95% level.
+
+### Compare average interval lengths
+
+```{r interval-length-plot}
+plot(
+  simulation_results$SampleSize[
+    simulation_results$Method == "Wald normal"
+  ],
+  simulation_results$AverageLength[
+    simulation_results$Method == "Wald normal"
+  ],
+  type = "b",
+  pch = 16,
+  xlab = "Sample size",
+  ylab = "Average interval length",
+  main = "Average length of the confidence intervals"
+)
+
+lines(
+  simulation_results$SampleSize[
+    simulation_results$Method == "Log-transformed"
+  ],
+  simulation_results$AverageLength[
+    simulation_results$Method == "Log-transformed"
+  ],
+  type = "b",
+  pch = 17
+)
+
+legend(
+  "topright",
+  legend = c("Wald normal", "Log-transformed"),
+  lty = c(1, 1),
+  pch = c(16, 17)
+)
+```
+
+Shorter intervals indicate greater precision, provided that the coverage probability remains close to 0.95.
+
