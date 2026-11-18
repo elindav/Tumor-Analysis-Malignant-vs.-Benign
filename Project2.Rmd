@@ -435,14 +435,9 @@ data.frame(
 )
 ```
 
-For the Gamma MLE, the estimated mean is equal to the sample mean. Using the asymptotic distribution of the MLE and the Fisher information, the estimated standard error of the mean estimator is
+Using the asymptotic distribution of the MLE and the Fisher information, the standard error of the mean estimator is μ/√(nk). Since μ and k are unknown, we estimate the standard error by plugging the MLEs μ̂ and k̂ into this asymptotic variance formula:
 
-\[
-SE(\widehat{\mu})
-\approx
-\frac{\widehat{\mu}}{\sqrt{n\widehat{k}}}.
-\]
-
+SE-hat(μ̂) = μ̂ / √(n k̂)
 ### Method 1: Normal (Wald) confidence interval
 
 The Wald interval uses the asymptotic normal approximation:
