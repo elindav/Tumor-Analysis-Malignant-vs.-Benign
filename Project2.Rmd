@@ -369,8 +369,9 @@ wdbc <- bc
 malignant <- wdbc[wdbc$diagnosis == "M", ]
 x <- malignant$area_mean
 
-# Keep positive, non-missing observations
-x <- x[!is.na(x) & x > 0]
+# Validate the sample (Section 3.2 found no missing or nonpositive values,
+# so nothing is filtered; the check stops the analysis if this ever fails)
+stopifnot(all(!is.na(x)), all(x > 0))
 
 n <- length(x)
 sample_mean <- mean(x)
