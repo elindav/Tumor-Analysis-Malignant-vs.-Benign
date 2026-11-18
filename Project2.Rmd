@@ -503,7 +503,7 @@ knitr::kable(
 )
 ```
 
-The table reports the lower and upper endpoints and the length of each interval. The interval length measures its width: a shorter interval is more precise when its coverage is close to the nominal confidence level.
+The table reports the point estimate \(\widehat{\mu}\), its plug-in standard error (the same for both methods; the log-transformed interval applies the delta-method standard error \(1/\sqrt{n\widehat{k}}\) on the logarithmic scale), the lower and upper endpoints, and the length of each interval. The interval length measures its width: a shorter interval is more precise when its coverage is close to the nominal confidence level.
 
 The confidence level describes the long-run performance of the interval procedure. If we repeatedly took samples and constructed intervals in the same way, approximately 95% of those intervals would contain the true population mean, assuming the model and approximation are appropriate. It is not correct to say that the fixed population mean has a 95% probability of belonging to this particular calculated interval.
 
