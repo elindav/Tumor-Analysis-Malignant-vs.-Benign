@@ -396,6 +396,8 @@ where \(\widehat{k}\) is obtained by solving
 
 Here, \(\psi\) is the digamma function. We solve this equation numerically using `uniroot()`.
 
+**Method of Moments versus MLE.** Section 4 used the Method of Moments (MoM) only to draw the fitted Gamma curves when checking the model. For the confidence intervals we use the **maximum likelihood estimates (MLEs)** of \(k\) and \(\beta\), because the standard error formula below comes from the asymptotic normality of the MLE and the Fisher information. The MoM and MLE parameter values therefore differ (for example, the malignant shape is about 7.10 by MoM and about 7.65 by MLE), but both give the same estimate of the mean, \(\widehat{\mu}=\bar X\).
+
 ```{r gamma-estimates}
 gamma_mle <- function(values) {
   values <- values[!is.na(values) & values > 0]
