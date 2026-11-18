@@ -486,6 +486,8 @@ log_upper <- exp(log(mu_hat) + z_value * log_se)
 
 ci_results <- data.frame(
   Method = c("Wald normal", "Log-transformed"),
+  Estimate = c(mu_hat, mu_hat),
+  Standard_Error = c(se_mu, se_mu),
   Lower = c(wald_lower, log_lower),
   Upper = c(wald_upper, log_upper),
   Length = c(
