@@ -621,6 +621,13 @@ knitr::kable(
   caption = "Empirical coverage and average interval length from 5,000 simulations"
 )
 ```
+simulation_wide <- reshape(
+  simulation_results,
+  idvar = "SampleSize", timevar = "Method", direction = "wide"
+)
+print(simulation_wide, digits = 5, row.names = FALSE)
+
+write.csv(simulation_results, "simulation_results.csv", row.names = FALSE)
 
 The empirical coverage probability is calculated as
 
