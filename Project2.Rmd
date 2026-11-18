@@ -437,8 +437,11 @@ data.frame(
 
 Using the asymptotic distribution of the MLE and the Fisher information, the standard error of the mean estimator is μ/√(nk). Since μ and k are unknown, we estimate the standard error by plugging the MLEs μ̂ and k̂ into this asymptotic variance formula:
 
-SE-hat(μ̂) = μ̂ / √(n k̂)
-### Method 1: Normal (Wald) confidence interval
+$$
+\widehat{SE}(\hat{\mu}) = \frac{\hat{\mu}}{\sqrt{n\hat{k}}}.
+$$
+
+### Method 1: Normal (Wald) Confidence Interval
 
 The Wald interval uses the asymptotic normal approximation:
 
