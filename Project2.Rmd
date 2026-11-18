@@ -511,7 +511,7 @@ The confidence level describes the long-run performance of the interval procedur
 
 We use a simulation study to examine whether the two confidence interval methods achieve coverage close to the nominal 95% level.
 
-We take the Gamma parameter estimates from the malignant observations as fixed true parameter values for the simulation. For each simulated sample, we re-estimate the Gamma parameters and construct both confidence intervals. We record whether each interval contains the fixed true mean and calculate its length.
+We take the MLE estimates k̂ and β̂ from the malignant observations and treat them as fixed “true” parameter values for simulation purposes only; they are estimates, not genuinely known population parameters. The coverage results therefore describe how the methods behave when the data really come from a Gamma distribution with these parameters. For each simulated sample, we re-estimate the Gamma parameters and construct both confidence intervals. We record whether each interval contains the fixed true mean and calculate its length.
 
 We use 5,000 repetitions for each sample size. The sample sizes include a smaller sample, the actual malignant sample size, and a larger sample.
 
