@@ -332,7 +332,270 @@ The substantial differences between malignant and benign measurements support an
 
 These results do not establish that the distributions are exactly Gamma, nor do they establish random sampling or clinical representativeness. The analysis describes **mean cell-nucleus area in FNA observations**, not the physical size of an entire tumor.
 
+# 5. Estimators and Their Properties
 
+## 5.1. Construction of Estimators
+
+In Section 4, we computed preliminary parameter estimates using the Method of Moments (MoM) to draw fitted Gamma curves. Here, we implement Maximum Likelihood Estimation (MLE) for the $\text{Gamma}(k, \beta)$ model and examine the properties of both estimation methods.
+
+For an i.i.d. sample $X_1, \dots, X_n \sim \text{Gamma}(k, \beta)$ with density
+
+$$
+f(x; k, \beta) = \frac{\beta^k}{\Gamma(k)} x^{k-1} e^{-\beta x}, \qquad x > 0,
+$$
+
+differentiating the log-likelihood
+
+$$
+\ell(k, \beta) = nk \ln(\beta) - n \ln\Gamma(k) + (k - 1)\sum_{i=1}^n \ln(x_i) - \beta \sum_{i=1}^n x_i
+$$
+
+with respect to $\beta$ and $k$ yields the score equations:
+
+$$
+\hat{\beta}{\text{MLE}} = \frac{\hat{k}{\text{MLE}}}{\overline{X}},
+\qquad
+\ln(\hat{k}{\text{MLE}}) - \psi(\hat{k}{\text{MLE}})
+= \ln(\overline{X}) - \frac{1}{n}\sum_{i=1}^n \ln(X_i).
+$$
+
+where $\psi(k) = \frac{d}{dk}\ln\Gamma(k)$ is the digamma function. Because the shape equation has no closed-form solution, fit_gamma_mle() solves it numerically via uniroot() on $[10^{-6}, 10^6]$ (guaranteed a unique root since $\ln(k) - \psi(k)$ is continuous and strictly decreasing on $(0, \infty)$), then recovers $\hat{\beta}{\text{MLE}}$ and $\hat{\mu}{\text{MLE}} = \overline{X}$.
+
+```{r two-param mle}
+# two-parameter Gamma MLEs (shape k, rate beta, and mean mu = k/beta) via log(k) - digamma(k) = log(mean(x)) - mean(log(x)) via uniroot().
+fit_gamma_mle <- function(x) {
+  if (any(x <= 0) || any(!is.finite(x))) {
+    stop("Gamma MLE requires strictly positive, finite observations.")
+  }
+
+  x_bar <- mean(x)
+  s <- log(x_bar) - mean(log(x))
+
+  if (s <= 0) {
+    stop("Sample values must not all be identical.")
+  }
+
+  k_hat <- uniroot(
+    function(k) log(k) - digamma(k) - s,
+    interval = c(1e-6, 1e6),
+    tol = .Machine$double.eps^0.5
+  )$root
+
+  beta_hat <- k_hat / x_bar
+  c(shape = k_hat, rate = beta_hat, mean = x_bar)
+}
+```
+
+## 5.2. Theoretical Properties of the Estimators
+
+Population Mean ($\hat{\mu} = \overline{X}$): Both MoM and MLE yield $\hat{\mu} = \overline{X}$. Since $E(X_i) = k/\beta = \mu$, $\overline{X}$ is unbiased with exact variance and MSE equal to
+
+$$
+\operatorname{Var}(\overline{X}) = \frac{k}{n\beta^2} = \frac{\mu^2}{nk}.
+$$
+
+When $k$ is known and fixed, the model reduces to a one-parameter exponential family in which $\overline{X}$ is complete and sufficient. In the full two-parameter Gamma family, while completeness does not hold globally, $\overline{X}$ is an unbiased estimator of $\mu$ whose variance achieves the Cramér–Rao Lower Bound (CRLB), establishing its efficiency among unbiased estimators. By the Law of Large Numbers and Central Limit Theorem, $\overline{X}$ is consistent and
+
+$$
+\sqrt{n}(\overline{X} - \mu) \xrightarrow{d} \mathcal{N}\left(0, \frac{\mu^2}{k}\right).
+$$
+Shape ($\hat{k}$) and Rate ($\hat{\beta}$): Because $\hat{k}$ and $\hat{\beta}$ are nonlinear functions of sample statistics, neither estimator is unbiased in finite samples. Under regularity conditions ($k > 0, \beta > 0$), $(\hat{k}{\text{MLE}}, \hat{\beta}{\text{MLE}})$ is consistent and asymptotically normal with covariance matrix $n^{-1} I^{-1}(k, \beta)$, where the Fisher Information matrix (in the shape–rate parameterization) and its inverse are:
+
+$$
+I(k, \beta) =
+\begin{pmatrix}
+\psi'(k) & -1/\beta \
+-1/\beta & k/\beta^2
+\end{pmatrix},
+\qquad
+I^{-1}(k, \beta) =
+\frac{1}{k\psi'(k) - 1}
+\begin{pmatrix}
+k & \beta \
+\beta & \beta^2 \psi'(k)
+\end{pmatrix}.
+$$
+
+and $\psi'(k)$ is the trigamma function. Thus, the MLE achieves the CRLB asymptotically. In our simulation study, the MLE generally exhibits lower empirical variance and MSE than MoM for both the shape and rate parameters.
+
+### 5.3. Simulation Study of Estimator Properties
+
+Following our lecture simulation approach, for each sample size $n \in {30, 100, 212, 500}$, we generate $n \times m$ random observations ($m = 2,000$) from $\text{Gamma}(k_0 = 7.65, \beta_0 = 0.0078)$, arrange them into a data frame with m columns, and apply the MLE and MoM estimators across columns using sapply() to compute empirical bias, variance, and MSE.
+
+```{r}
+set.seed(108)
+
+k_true <- 7.65
+beta_true <- 0.0078
+m <- 2000
+n_grid <- c(30, 100, 212, 500)
+
+sim_prop <- data.frame()
+
+for (n in n_grid) {
+  # Generate n*m Gamma observations and arrange into m columns (one sample per column)
+  x <- rgamma(n * m, shape = k_true, rate = beta_true)
+  samples_df <- as.data.frame(matrix(x, ncol = m))
+
+  # Apply MLE across all m simulated samples
+  mle_mat <- sapply(samples_df, fit_gamma_mle)
+  mle_k <- mle_mat["shape", ]
+  mle_b <- mle_mat["rate", ]
+
+  # Apply MoM (from Section 4.1) across all m simulated samples
+  mom_list <- sapply(samples_df, fit_gamma_mom)
+  mom_k <- unlist(mom_list["shape", ])
+  mom_b <- unlist(mom_list["rate", ])
+
+  sim_prop <- rbind(
+    sim_prop,
+    data.frame(
+      n = n,
+      Method = "MLE",
+      Bias_k = mean(mle_k) - k_true,
+      Var_k = var(mle_k),
+      MSE_k = mean((mle_k - k_true)^2),
+      Bias_beta = mean(mle_b) - beta_true,
+      Var_beta = var(mle_b),
+      MSE_beta = mean((mle_b - beta_true)^2)
+    ),
+    data.frame(
+      n = n,
+      Method = "MoM",
+      Bias_k = mean(mom_k) - k_true,
+      Var_k = var(mom_k),
+      MSE_k = mean((mom_k - k_true)^2),
+      Bias_beta = mean(mom_b) - beta_true,
+      Var_beta = var(mom_b),
+      MSE_beta = mean((mom_b - beta_true)^2)
+    )
+  )
+}
+
+knitr::kable(
+  sim_prop,
+  digits = 8,
+  row.names = FALSE,
+  caption = "Table 3. Simulated Bias, Variance, and MSE for Gamma MLE vs. MoM (m = 2,000)"
+)
+```
+
+```{r}
+par(mfrow = c(1, 2))
+
+mle_sub <- sim_prop[sim_prop$Method == "MLE", ]
+mom_sub <- sim_prop[sim_prop$Method == "MoM", ]
+
+plot(
+  mle_sub$n, mle_sub$MSE_k,
+  type = "b", pch = 16, col = "blue", lwd = 2,
+  ylim = range(c(mle_sub$MSE_k, mom_sub$MSE_k)),
+  xlab = "Sample size (n)",
+  ylab = "Mean Squared Error (MSE)",
+  main = "MSE of Shape Estimator (k)"
+)
+
+lines(
+  mom_sub$n, mom_sub$MSE_k,
+  type = "b", pch = 17, col = "darkorange", lwd = 2, lty = 2
+)
+
+legend(
+  "topright",
+  legend = c("MLE", "MoM"),
+  col = c("blue", "darkorange"),
+  pch = c(16, 17),
+  lty = c(1, 2),
+  lwd = 2,
+  bty = "n"
+)
+
+plot(
+  mle_sub$n, mle_sub$MSE_beta,
+  type = "b", pch = 16, col = "blue", lwd = 2,
+  ylim = range(c(mle_sub$MSE_beta, mom_sub$MSE_beta)),
+  xlab = "Sample size (n)",
+  ylab = "Mean Squared Error (MSE)",
+  main = "MSE of Rate Estimator (beta)"
+)
+
+lines(
+  mom_sub$n, mom_sub$MSE_beta,
+  type = "b", pch = 17, col = "darkorange", lwd = 2, lty = 2
+)
+
+legend(
+  "topright",
+  legend = c("MLE", "MoM"),
+  col = c("blue", "darkorange"),
+  pch = c(16, 17),
+  lty = c(1, 2),
+  lwd = 2,
+  bty = "n"
+)
+
+par(mfrow = c(1, 1))
+```
+
+As $n$ increases from $30$ to $500$, empirical bias, variance, and MSE generally decrease toward zero for both methods, supporting consistency. Both methods show finite-sample bias at $n = 30$ that becomes smaller by $n = 212$, and MLE generally achieves lower variance and MSE than MoM for both parameters, motivating our use of MLE in Section 6.
+
+## 5.4. Parameter Estimates and Conclusions on the Real Data
+
+Plugging $(\hat{k}, \hat{\beta})$ into the inverse Fisher Information matrix gives the estimated asymptotic standard errors:
+
+$$
+\widehat{\text{SE}}(\hat{k}) =
+\sqrt{\frac{\hat{k}}{n\left(\hat{k}\psi'(\hat{k}) - 1\right)}},
+\qquad
+\widehat{\text{SE}}(\hat{\beta}) =
+\sqrt{\frac{\hat{\beta}^2 \psi'(\hat{k})}{n\left(\hat{k}\psi'(\hat{k}) - 1\right)}},
+\qquad
+\widehat{\text{SE}}(\hat{\mu}) =
+\frac{\hat{\mu}}{\sqrt{n\hat{k}}}.
+$$
+
+```{r mle and fisher se}
+# Evaluate MLEs and inverse Fisher Information standard errors on real groups
+summarize_gamma_mle <- function(x, group_name) {
+  n_obs <- length(x)
+  est <- fit_gamma_mle(x)
+
+  k_hat <- unname(est["shape"])
+  b_hat <- unname(est["rate"])
+  mu_hat <- unname(est["mean"])
+
+  denom <- n_obs * (k_hat * trigamma(k_hat) - 1)
+
+  se_k <- sqrt(k_hat / denom)
+  se_b <- sqrt((b_hat^2 * trigamma(k_hat)) / denom)
+  se_mu <- mu_hat / sqrt(n_obs * k_hat)
+
+  data.frame(
+    Diagnosis = group_name,
+    N = n_obs,
+    Shape_k = k_hat,
+    SE_k = se_k,
+    Rate_beta = b_hat,
+    SE_beta = se_b,
+    Mean_mu = mu_hat,
+    SE_mu = se_mu
+  )
+}
+
+mle_summary_table <- rbind(
+  summarize_gamma_mle(x_M, "Malignant"),
+  summarize_gamma_mle(x_B, "Benign")
+)
+
+knitr::kable(
+  mle_summary_table,
+  digits = 5,
+  row.names = FALSE,
+  caption = "Table 4. Maximum Likelihood Estimates and Estimated Standard Errors"
+)
+```
+
+For malignant observations ($n = 212$), the estimated mean nuclear area is $\hat{\mu}_M = 978.38$ ($\widehat{\text{SE}} = 24.29$), with shape $\hat{k}_M = 7.65$ ($\widehat{\text{SE}} = 0.73$) and rate $\hat{\beta}_M = 0.00782$ ($\widehat{\text{SE}} = 0.00077$). For benign observations ($n = 357$), $\hat{\mu}_B = 462.79$ ($\widehat{\text{SE}} = 7.28$), with $\hat{k}_B = 11.31$ ($\widehat{\text{SE}} = 0.83$) and $\hat{\beta}_B = 0.02444$ ($\widehat{\text{SE}} = 0.00184$). Malignant nuclei have roughly $2.11$ times the average area of benign nuclei. The smaller shape estimate, $\hat{k}_M < \hat{k}_B$, indicates greater relative dispersion and right-skewness in the fitted malignant Gamma distribution compared with the benign distribution.
 
 # 6. Confidence Intervals by Elina
 
