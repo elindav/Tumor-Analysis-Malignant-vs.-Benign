@@ -2,10 +2,6 @@
 
 ### Statistical Modeling, Parameter Estimation, and Confidence Interval Analysis
 
-<p align="center">
-  <strong>AUA · CS 108 — Statistics · Fall 2026</strong>
-</p>
-
 ---
 
 ## Overview
